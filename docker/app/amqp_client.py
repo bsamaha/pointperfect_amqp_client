@@ -110,7 +110,7 @@ class SerialCommunication:
                     break
             else:
                 await asyncio.sleep(0.01)  # Short sleep to yield control
-    async def processAndSend(self, parsed_data, amqpClient):
+    async def process_and_send(self, parsed_data, amqpClient):
         diff_age = parsed_data.diffAge if parsed_data.diffAge != "" else -1
 
         data_dict = {
