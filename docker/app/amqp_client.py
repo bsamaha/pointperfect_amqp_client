@@ -139,6 +139,7 @@ class SerialCommunication:
             "diff_age": diff_age,
             "diff_station": parsed_data.diffStation,
             "processed_time": f"{time.time():.3f}",
+            "device_id": DEVICE_ID,
         }
 
         start_time = time.time()
