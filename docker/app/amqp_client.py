@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import queue
+import sys
 import time
 from urllib.parse import urlparse
 from serial import Serial, SerialException
@@ -13,12 +14,17 @@ import os
 from config import load_config_from_yaml, Config
 
 
+# Configure logging to write to stdout
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
     datefmt="%H:%M:%S",
-    filename="client.log",
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # Log to stdout
+        # If you still want to log to a file as well, you can add it here
+        # logging.FileHandler("client.log")
+    ]
 )
 
 # Use environment variables with defaults
@@ -101,7 +107,7 @@ class SerialCommunication:
                     ubx_reader = UBXReader(self.stream, protfilter=NMEA_PROTOCOL)
                     _, parsed_data = ubx_reader.read()
                     if parsed_data and parsed_data.identity in GNSS_MESSAGES:
-                        logger.info(f"Received GNSS message: {parsed_data}")
+                        logger.debug(f"Received GNSS message: {parsed_data}")
                         asyncio.create_task(
                             self.process_and_send(parsed_data, amqp_client)
                         )
@@ -121,14 +127,14 @@ class SerialCommunication:
             "lon": parsed_data.lon,
             "ew": parsed_data.EW,
             "quality": parsed_data.quality,
-            "num_sv": parsed_data.num_sv,
+            "num_sv": parsed_data.numSV,
             "hdop": parsed_data.HDOP,
             "alt": parsed_data.alt,
-            "alt_unit": parsed_data.alt_unit,
+            "alt_unit": parsed_data.altUnit,
             "sep": parsed_data.sep,
             "sep_unit": parsed_data.sep_unit,
             "diff_age": diff_age,
-            "diff_station": parsed_data.diff_station,
+            "diff_station": parsed_data.diffStation,
             "processed_time": f"{time.time():.3f}",
             "device_id": DEVICE_ID,
             # missing experiment_id
