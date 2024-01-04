@@ -100,6 +100,7 @@ class SerialCommunication:
             logger.error(f"Failed to open serial port: {e}")
             raise ConnectionError(f"Failed to open serial port: {e}")
 
+
     async def read_and_send_data(self, amqp_client):
         while True:
             if self.stream and self.stream.in_waiting:
@@ -107,7 +108,7 @@ class SerialCommunication:
                     ubx_reader = UBXReader(self.stream, protfilter=NMEA_PROTOCOL)
                     _, parsed_data = ubx_reader.read()
                     if parsed_data and parsed_data.identity in GNSS_MESSAGES:
-                        logger.debug(f"Received GNSS message: {parsed_data}")
+                        logger.info(f"Received GNSS message: {parsed_data}")
                         asyncio.create_task(
                             self.process_and_send(parsed_data, amqp_client)
                         )
@@ -116,7 +117,9 @@ class SerialCommunication:
                     break
             else:
                 await asyncio.sleep(0.01)  # Short sleep to yield control
-    async def process_and_send(self, parsed_data, amqpClient):
+
+
+    async def process_and_send(self, parsed_data, amqp_client):
         diff_age = parsed_data.diffAge if parsed_data.diffAge != "" else -1
 
         data_dict = {
@@ -132,22 +135,20 @@ class SerialCommunication:
             "alt": parsed_data.alt,
             "alt_unit": parsed_data.altUnit,
             "sep": parsed_data.sep,
-            "sep_unit": parsed_data.sep_unit,
+            "sep_unit": parsed_data.sepUnit,
             "diff_age": diff_age,
             "diff_station": parsed_data.diffStation,
             "processed_time": f"{time.time():.3f}",
-            "device_id": DEVICE_ID,
-            # missing experiment_id
         }
 
         start_time = time.time()
         json_data = json.dumps(data_dict)
         logger.debug(f"Sending JSON data: {json_data}")
 
-        # Correctly await the publishMessage coroutine
-        await amqpClient.publishMessage(json_data)
-        sendTime = time.time() - start_time
-        logger.debug(f"Time taken to send message: {sendTime} seconds")
+        # Correctly await the publish_message coroutine
+        await amqp_client.publish_message(json_data)
+        send_time = time.time() - start_time
+        logger.debug(f"Time taken to send message: {send_time} seconds")
     def enqueue_message(self, message):
         self.message_queue.put(message)
 
