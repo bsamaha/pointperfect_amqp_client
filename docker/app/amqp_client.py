@@ -8,6 +8,7 @@ from serial import Serial, SerialException
 from pyubx2 import UBXReader, NMEA_PROTOCOL
 import aio_pika
 import paho.mqtt.client as mqtt
+import os
 
 from config import load_config_from_yaml, Config
 
@@ -19,6 +20,11 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
     filename="client.log",
 )
+
+# Use environment variables with defaults
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "192.168.1.153")
+PORT = os.getenv("PORT", "/dev/ttyACM0")
+DEVICE_ID = os.getenv("DEVICE_ID", "blake_test_rpi")
 
 GNSS_MESSAGES = {"GNGGA"}
 RABBITMQ_HOST = "192.168.1.153"
@@ -126,6 +132,7 @@ class SerialCommunication:
             "diffStation": parsed_data.diffStation,
             # processedTime can be used to compare transit with time
             "processedTime": f"{time.time():.3f}",
+            "deviceID": DEVICE_ID,
         }
 
         start_time = time.time()
