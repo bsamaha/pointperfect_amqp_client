@@ -4,11 +4,11 @@ idna==3.6
 multidict==6.0.4
 paho-mqtt==1.6.1
 pamqp==3.2.1
-psycopg2-binary==2.9.9
+pika==1.3.2
 pynmeagps==1.0.32
 pyrtcm==1.0.14
 pyserial==3.5
+pytz==2023.3.post1
 pyubx2==1.2.35
 PyYAML==6.0.1
-websockets==12.0
 yarl==1.9.4

@@ -25,7 +25,7 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)  # Log to stdout
         # If you still want to log to a file as well, you can add it here
         # logging.FileHandler("client.log")
-    ]
+    ],
 )
 
 # Use environment variables with defaults
@@ -92,8 +92,6 @@ class SerialCommunication:
         self._open_connection(port, baudrate, timeout)
         self.thread = asyncio.create_task(self.send_messages())
 
-
-
     def _open_connection(self, port, baudrate, timeout):
         try:
             self.stream = Serial(port, baudrate, timeout=timeout)
@@ -101,7 +99,6 @@ class SerialCommunication:
         except SerialException as e:
             logger.error(f"Failed to open serial port: {e}")
             raise ConnectionError(f"Failed to open serial port: {e}")
-
 
     async def read_and_send_data(self, amqp_client):
         while True:
@@ -120,11 +117,9 @@ class SerialCommunication:
             else:
                 await asyncio.sleep(0.01)  # Short sleep to yield control
 
-
     async def process_and_send(self, parsed_data, amqp_client):
         diff_age = parsed_data.diffAge if parsed_data.diffAge != "" else -1
 
-        
         # Get current local date and time
         local_datetime = datetime.now()
 
@@ -139,7 +134,6 @@ class SerialCommunication:
 
         # No need to set timezone as it's already in UTC
         full_datetime_str = full_datetime.isoformat()
-        
 
         data_dict = {
             "full_time": full_datetime_str,
@@ -156,7 +150,7 @@ class SerialCommunication:
             "sep_unit": parsed_data.sepUnit,
             "diff_age": diff_age,
             "diff_station": parsed_data.diffStation,
-            "processed_time": f"{time.time():.3f}",
+            "processed_time": f"{int(time.time()*1000)}",
             "device_id": DEVICE_ID,
         }
 
@@ -168,6 +162,7 @@ class SerialCommunication:
         await amqp_client.publish_message(json_data)
         send_time = time.time() - start_time
         logger.debug(f"Time taken to send message: {send_time} seconds")
+
     def enqueue_message(self, message):
         self.message_queue.put(message)
 
