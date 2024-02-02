@@ -10,7 +10,8 @@ from pyubx2 import UBXReader, NMEA_PROTOCOL
 import aio_pika
 import paho.mqtt.client as mqtt
 import os
-
+from datetime import date, datetime, timezone
+import pytz
 from config import load_config_from_yaml, Config
 
 
@@ -28,12 +29,11 @@ logging.basicConfig(
 )
 
 # Use environment variables with defaults
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "192.168.1.153")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
 PORT = os.getenv("PORT", "/dev/ttyACM0")
 DEVICE_ID = os.getenv("DEVICE_ID", "blake_test_rpi")
 
 GNSS_MESSAGES = {"GNGGA"}
-RABBITMQ_HOST = "192.168.1.153"
 RABBITMQ_PORT = 5672
 RABBITMQ_USERNAME = "guest"
 RABBITMQ_PASSWORD = "guest"
@@ -92,6 +92,8 @@ class SerialCommunication:
         self._open_connection(port, baudrate, timeout)
         self.thread = asyncio.create_task(self.send_messages())
 
+
+
     def _open_connection(self, port, baudrate, timeout):
         try:
             self.stream = Serial(port, baudrate, timeout=timeout)
@@ -122,9 +124,25 @@ class SerialCommunication:
     async def process_and_send(self, parsed_data, amqp_client):
         diff_age = parsed_data.diffAge if parsed_data.diffAge != "" else -1
 
+        
+        # Get current local date and time
+        local_datetime = datetime.now()
+
+        # Convert local datetime to UTC
+        utc_datetime = local_datetime.astimezone(pytz.utc)
+
+        # Extract the date part in UTC
+        utc_date = utc_datetime.date()
+
+        # Combine UTC date with parsed_data.time
+        full_datetime = datetime.combine(utc_date, parsed_data.time)
+
+        # No need to set timezone as it's already in UTC
+        full_datetime_str = full_datetime.isoformat()
+        
+
         data_dict = {
-            "time": str(parsed_data.time),
-            "full_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "full_time": full_datetime_str,
             "lat": parsed_data.lat,
             "ns": parsed_data.NS,
             "lon": parsed_data.lon,
