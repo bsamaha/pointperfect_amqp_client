@@ -1,18 +1,20 @@
 import asyncio
 import json
 import logging
+import os
 import queue
 import sys
 import time
+from datetime import datetime
 from urllib.parse import urlparse
+
 from serial import Serial, SerialException
 from pyubx2 import UBXReader, NMEA_PROTOCOL
 import aio_pika
 import paho.mqtt.client as mqtt
-import os
-from datetime import date, datetime, timezone
 import pytz
-from config import load_config_from_yaml, Config
+
+from config import load_config_from_yaml
 
 
 # Configure logging to write to stdout
@@ -21,11 +23,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
     datefmt="%H:%M:%S",
-    handlers=[
-        logging.StreamHandler(sys.stdout)  # Log to stdout
-        # If you still want to log to a file as well, you can add it here
-        # logging.FileHandler("client.log")
-    ],
+    handlers=[logging.StreamHandler(sys.stdout)],  # Log to stdout
 )
 
 # Use environment variables with defaults
@@ -136,6 +134,7 @@ class SerialCommunication:
         full_datetime_str = full_datetime.isoformat()
 
         data_dict = {
+            "message_type": parsed_data.identity,
             "full_time": full_datetime_str,
             "lat": parsed_data.lat,
             "ns": parsed_data.NS,
