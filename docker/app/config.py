@@ -1,111 +1,117 @@
+from pydantic import BaseModel, Field
 import yaml
-import os
 import json
 import tempfile
-from pyubx2 import NMEA_PROTOCOL, UBX_PROTOCOL, RTCM3_PROTOCOL
+from typing import Any, List, Optional, Dict
 import logging
+import ssl
 
+# Logger setup
 logger = logging.getLogger(__name__)
 
-# Constants for certificate and key formatting
-KEY_HEADER = "-----BEGIN RSA PRIVATE KEY-----\n"
-KEY_FOOTER = "\n-----END RSA PRIVATE KEY-----\n"
-CERT_HEADER = "-----BEGIN CERTIFICATE-----\n"
-CERT_FOOTER = "\n-----END CERTIFICATE-----\n"
 
-
-class Config:
-    PORT = None
-    BAUDRATE = None
-    TIMEOUT = None
-    PROTOCOL_FILTER = None
-    LOCALIZED = None
-    REGION = None
-
-    def __init__(self, yaml_config):
-        self.update_from_yaml(yaml_config)
-        self.load_ucenter_json_file(yaml_config["UCENTER_JSON_FILE"])
-        self.load_mqtt_credentials()
-
-    def update_from_yaml(self, config_data):
-        # Update all attributes from the YAML file
-        self.PORT = config_data.get("PORT", self.PORT)
-        self.UBX_FILENAME = config_data.get("UBX_FILENAME", False)
-        self.BAUDRATE = config_data.get("BAUDRATE", self.BAUDRATE)
-        self.TIMEOUT = config_data.get("TIMEOUT", self.TIMEOUT)
-        self.PROTOCOL_FILTER = config_data.get("PROTOCOL_FILTER", self.PROTOCOL_FILTER)
-        self.LOCALIZED = config_data.get("LOCALIZED", self.LOCALIZED)
-        self.REGION = config_data.get("REGION", self.REGION)
-        for key, value in config_data.items():
-            setattr(self, key, value)
+class AppConfig(BaseModel):
+    port: str = Field(..., alias="PORT")
+    baudrate: int = Field(..., alias="BAUDRATE")
+    timeout: float = Field(..., alias="TIMEOUT")
+    ucenter_json_file: str = Field(..., alias="UCENTER_JSON_FILE")
+    localized: bool = Field(False, alias="LOCALIZED")
+    region: str = Field(..., alias="REGION")
+    lband: bool = Field(False, alias="LBAND")
+    ubx_filename: Optional[str] = Field(None, alias="UBX_FILENAME")
+    # Flatten MQTT Config
+    mqtt_client_id: str
+    mqtt_server_uri: str
+    mqtt_key: str
+    mqtt_cert: str
+    mqtt_root_ca: Optional[str] = None
+    mqtt_subscription_topics: List[str] = []
+    mqtt_assistnow_topics: List[str] = []
+    mqtt_data_topics: List[str] = []
+    mqtt_dynamic_keys: Dict[str, Any]
+    # Temporary file paths, not loaded from config but generated
+    mqtt_cert_file: Optional[str] = None
+    mqtt_key_file: Optional[str] = None
+    mqtt_root_ca_file: Optional[str] = None
+    tls_version: Optional[str] = None
 
     @classmethod
-    def load_ucenter_json_file(cls, filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as file:
-                data = json.load(file)
-                mqtt_config = data.get("MQTT", {})
+    def load_from_yaml(cls, yaml_file_path: str) -> "AppConfig":
+        with open(yaml_file_path, "r") as file:
+            config_data = yaml.safe_load(file)
 
-                connectivity = mqtt_config.get("Connectivity", {})
-                cls.MQTT_CLIENT_ID = connectivity.get("ClientID")
-                cls.MQTT_SERVER_URI = connectivity.get("ServerURI")
-
-                credentials = connectivity.get("ClientCredentials", {})
-                cls.MQTT_KEY = credentials.get("Key")
-                cls.MQTT_CERT = credentials.get("Cert")
-                cls.MQTT_ROOT_CA = credentials.get("RootCA")
-
-                subscriptions = mqtt_config.get("Subscriptions", {})
-                cls.MQTT_SUBSCRIPTION_TOPICS = subscriptions.get("Key", {}).get(
-                    "KeyTopics", []
+        if json_file_path := config_data.get("UCENTER_JSON_FILE", ""):
+            with open(json_file_path, "r") as file:
+                mqtt_data = json.load(file)
+                # Extract and rename MQTT settings to match AppConfig fields
+                mqtt_config = mqtt_data["MQTT"]["Connectivity"]
+                mqtt_subscriptions = mqtt_data["MQTT"].get("Subscriptions", {})
+                config_data["mqtt_client_id"] = mqtt_config["ClientID"]
+                config_data["mqtt_server_uri"] = mqtt_config["ServerURI"]
+                # Renaming 'Key' to 'mqtt_key' and 'Cert' to 'mqtt_cert' based on JSON structure
+                config_data["mqtt_key"] = mqtt_config["ClientCredentials"]["Key"]
+                config_data["mqtt_cert"] = mqtt_config["ClientCredentials"]["Cert"]
+                config_data["mqtt_root_ca"] = mqtt_config["ClientCredentials"].get(
+                    "RootCA"
                 )
-                cls.MQTT_ASSISTNOW_TOPICS = subscriptions.get("AssistNow", {}).get(
-                    "AssistNowTopics", []
-                )
-                cls.MQTT_DATA_TOPICS = subscriptions.get("Data", {}).get(
+                # Handle subscriptions
+                config_data["mqtt_subscription_topics"] = mqtt_subscriptions.get(
+                    "Key", {}
+                ).get("KeyTopics", [])
+                config_data["mqtt_assistnow_topics"] = mqtt_subscriptions.get(
+                    "AssistNow", {}
+                ).get("AssistNowTopics", [])
+                # Flatten data topics
+                data_topics = []
+                for topic_group in mqtt_subscriptions.get("Data", {}).get(
                     "DataTopics", []
+                ):
+                    data_topics.extend(topic_group.split(";"))
+                config_data["mqtt_data_topics"] = data_topics
+                # Dynamic keys
+                config_data["mqtt_dynamic_keys"] = mqtt_data["MQTT"].get(
+                    "dynamickeys", {}
                 )
+                ssl_config = mqtt_data["MQTT"]["Connectivity"].get("SSL", {})
+                config_data["tls_version"] = ssl_config.get("Protocol", "TLSv1.2")
 
-                cls.MQTT_DYNAMIC_KEYS = mqtt_config.get("dynamickeys", {})
+        logger.info(f"Loaded configuration: {config_data}")
+        return cls.parse_obj(config_data)
 
-        except FileNotFoundError as e:
-            raise FileNotFoundError(f"File not found: {filepath}") from e
-        except json.JSONDecodeError as e:
-            raise json.JSONDecodeError(
-                f"File is not valid JSON: {filepath}", e.doc, e.pos
-            )
-
-    def load_mqtt_credentials(self):
-        cert_content = CERT_HEADER + self.MQTT_CERT + CERT_FOOTER
-        key_content = KEY_HEADER + self.MQTT_KEY + KEY_FOOTER
-
-        # Create temporary files for certificate and key
-        self.MQTT_CERT_FILE = create_temp_file(
-            cert_content, prefix="device-", suffix="-pp-cert.crt"
+    def create_temp_files(self):
+        # Create temporary files for certs and keys, if necessary
+        self.mqtt_cert_file = (
+            self._create_temp_file(self.mqtt_cert, "CERTIFICATE")
+            if self.mqtt_cert
+            else None
         )
-        self.MQTT_KEY_FILE = create_temp_file(
-            key_content, prefix="device-", suffix="-pp-key.pem"
+        self.mqtt_key_file = (
+            self._create_temp_file(self.mqtt_key, "RSA PRIVATE KEY")
+            if self.mqtt_key
+            else None
+        )
+        self.mqtt_root_ca_file = (
+            self._create_temp_file(content=self.mqtt_root_ca, file_type="CERTIFICATE")
+            if self.mqtt_root_ca
+            else None
         )
 
-        # Verify the files exist
-        if not os.path.exists(self.MQTT_CERT_FILE) or not os.path.exists(
-            self.MQTT_KEY_FILE
-        ):
-            logger.error("Failed to create MQTT certificate or key file.")
-            raise FileNotFoundError("Failed to create MQTT certificate or key file.")
+    @staticmethod
+    def _create_temp_file(content: str, file_type: str) -> str:
+        content_formatted = (
+            f"-----BEGIN {file_type}-----\n{content}\n-----END {file_type}-----"
+        )
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False, mode="w", prefix=f"{file_type.lower()}_", suffix=".pem"
+        )
+        temp_file.write(content_formatted)
+        temp_file.flush()
+        return temp_file.name
 
 
-def load_config_from_yaml(yaml_file_path):
-    with open(yaml_file_path, "r") as file:
-        config_data = yaml.safe_load(file)
-    return Config(config_data)
-
-
-def create_temp_file(content, prefix, suffix):
-    """
-    Create a temporary file with the given content.
-    """
-    file_descriptor, file_path = tempfile.mkstemp(prefix=prefix, suffix=suffix)
-    with os.fdopen(file_descriptor, "w") as temp_file:
-        temp_file.write(content)
-    return file_path
+def load_config(yaml_file_path: str) -> AppConfig:
+    try:
+        return AppConfig.load_from_yaml(yaml_file_path)
+    except Exception as e:
+        logger.error(f"Failed to load configuration: {e}")
+        raise

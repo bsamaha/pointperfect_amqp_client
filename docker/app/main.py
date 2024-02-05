@@ -9,13 +9,14 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 from serial import Serial, SerialException
-from pyubx2 import UBXReader, NMEA_PROTOCOL
+from utils import map_tls_version
 import aio_pika
 import paho.mqtt.client as mqtt
 import pytz
 
-from config import load_config_from_yaml
-
+from pyubx2 import UBXReader
+from pyubx2.ubxtypes_core import NMEA_PROTOCOL
+from config import load_config
 
 # Configure logging to write to stdout
 logger = logging.getLogger(__name__)
@@ -201,17 +202,26 @@ class PointPerfectClient:
         self.mqtt_client = None
         self.current_topics = {}
 
-        parsed_uri = urlparse(self.config.MQTT_SERVER_URI)
+        parsed_uri = urlparse(self.config.mqtt_server_uri)
         self.mqtt_server = parsed_uri.hostname
         self.mqtt_port = parsed_uri.port or 8883  # Default MQTT SSL port
+        self.tls_version = map_tls_version(
+            self.config.tls_version
+        )  # Map the TLS version string to the ssl constant
 
         self._initialize_mqtt_client()
 
     def _initialize_mqtt_client(self):
-        self.mqtt_client = mqtt.Client(client_id=self.config.MQTT_CLIENT_ID)
-        self.mqtt_client.tls_set(
-            certfile=self.config.MQTT_CERT_FILE, keyfile=self.config.MQTT_KEY_FILE
-        )
+        self.mqtt_client = mqtt.Client(client_id=self.config.mqtt_client_id)
+
+        tls_params = {
+            "certfile": self.config.mqtt_cert_file,
+            "keyfile": self.config.mqtt_key_file,
+            "tls_version": self.tls_version,
+            "ca_certs": self.config.mqtt_root_ca_file,
+        }
+
+        self.mqtt_client.tls_set(**tls_params)
         self.mqtt_client.enable_logger()
         self.mqtt_client.on_connect = self._on_mqtt_connect
         self.mqtt_client.on_disconnect = self._on_mqtt_disconnect
@@ -269,14 +279,18 @@ class PointPerfectClient:
 
 async def main():
     # Load configuration from the YAML file
-    config = load_config_from_yaml("config.yaml")
+    config = load_config("config.yaml")
+    config.create_temp_files()
+    logger.debug(f"Cert file path: {config.mqtt_cert_file}")
+    logger.debug(f"Key file path: {config.mqtt_key_file}")
+    logger.debug(f"CA file path: {config.mqtt_root_ca_file}")
 
     # Initialize RabbitMQ client and connect
     rabbitmq_client = AsyncRabbitMQClient()
     await rabbitmq_client.connect()
 
     # Initialize SerialCommunication with the config
-    serial_comm = SerialCommunication(config.PORT, config.BAUDRATE, config.TIMEOUT)
+    serial_comm = SerialCommunication(config.port, config.baudrate, config.timeout)
 
     # Initialize PointPerfectClient with the config and serial communication
     point_perfect_client = PointPerfectClient(config, serial_comm)
