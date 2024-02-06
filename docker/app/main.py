@@ -278,8 +278,12 @@ class PointPerfectClient:
 
 
 async def main():
+    # get environment variables for the config.yaml
+    config_filepath = os.getenv(
+        "CONFIG_FILE",
+    )
     # Load configuration from the YAML file
-    config = load_config("config.yaml")
+    config = load_config(config_filepath)
     config.create_temp_files()
     logger.debug(f"Cert file path: {config.mqtt_cert_file}")
     logger.debug(f"Key file path: {config.mqtt_key_file}")

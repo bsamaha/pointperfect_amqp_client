@@ -4,7 +4,6 @@ import json
 import tempfile
 from typing import Any, List, Optional, Dict
 import logging
-import ssl
 
 # Logger setup
 logger = logging.getLogger(__name__)

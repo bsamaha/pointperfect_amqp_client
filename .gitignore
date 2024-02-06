@@ -1,4 +1,4 @@
-/docker/app/ucenter_config.json
+*ucenter_config.json
 .venv
 
 *pycache*

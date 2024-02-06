@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  app:
+    build: ./docker
+    volumes:
+      - ./config/ucenter_config.json:/usr/src/app/ucenter_config.json
+      - ./config/config.yaml:/usr/src/app/config.yaml
+    environment:
+      - CONFIG_FILE="/usr/src/app/config.yaml" # Example environment variable, replace with actual ones needed by your app

@@ -1,2 +1,4 @@
 /docker/app/.venv/
 /docker/app/__*
+/docker/app/.git/
+/docker/app/*.json
