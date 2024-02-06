@@ -1,5 +1,5 @@
 # config.yaml
-PORT: "COM7"
+PORT: "/dev/ttyUSB0"
 BAUDRATE: 38400
 TIMEOUT: 3
 UCENTER_JSON_FILE: "ucenter_config.json"

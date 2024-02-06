@@ -6,4 +6,12 @@ services:
       - ./config/ucenter_config.json:/usr/src/app/ucenter_config.json
       - ./config/config.yaml:/usr/src/app/config.yaml
     environment:
-      - CONFIG_FILE="/usr/src/app/config.yaml" # Example environment variable, replace with actual ones needed by your app
+      - CONFIG_FILE=/usr/src/app/config.yaml # Example environment variable, 
+      - RABBITMQ_HOST=192.168.1.153
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=guest
+      - RABBITMQ_PASSWORD=guest
+      - EXCHANGE_NAME=gnss_data_exchange
+      - ROUTING_KEY=gnss_data
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0

@@ -33,11 +33,11 @@ PORT = os.getenv("PORT", "/dev/ttyACM0")
 DEVICE_ID = os.getenv("DEVICE_ID", "blake_test_rpi")
 
 GNSS_MESSAGES = {"GNGGA"}
-RABBITMQ_PORT = 5672
-RABBITMQ_USERNAME = "guest"
-RABBITMQ_PASSWORD = "guest"
-EXCHANGE_NAME = "gnss_data_exchange"
-ROUTING_KEY = "gnss_routing_key"
+RABBITMQ_PORT = os.getenv("RABBITMQ_PORT", 5672)
+RABBITMQ_USERNAME = os.getenv("RABBITMQ_USERNAME", "guest")
+RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "guest")
+EXCHANGE_NAME = os.getenv("EXCHANGE_NAME", "gnss_exchange")
+ROUTING_KEY = os.getenv("ROUTING_KEY", "gnss_data")
 MAX_RECONNECT_ATTEMPTS = 5
 RECONNECT_DELAY = 1  # in seconds, will be doubled with each attempt
 
