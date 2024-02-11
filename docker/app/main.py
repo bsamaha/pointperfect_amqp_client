@@ -33,7 +33,7 @@ PORT = os.getenv("PORT", "/dev/ttyACM0")
 DEVICE_ID = os.getenv("DEVICE_ID", "blake_test_rpi")
 
 GNSS_MESSAGES = {"GNGGA"}
-RABBITMQ_PORT = os.getenv("RABBITMQ_PORT", 5672)
+RABBITMQ_PORT = os.getenv("RABBITMQ_PORT", "5672")
 RABBITMQ_USERNAME = os.getenv("RABBITMQ_USERNAME", "guest")
 RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "guest")
 EXCHANGE_NAME = os.getenv("EXCHANGE_NAME", "gnss_exchange")
@@ -58,7 +58,7 @@ class AsyncRabbitMQClient:
                 EXCHANGE_NAME, aio_pika.ExchangeType.DIRECT, durable=True
             )
         except Exception as e:
-            logger.error(f"Failed to connect to RabbitMQ: {e}")
+            logger.error("Failed to connect to RabbitMQ: %s", e)
             raise
 
     async def publish_message(self, message):
@@ -70,9 +70,9 @@ class AsyncRabbitMQClient:
                 aio_pika.Message(body=message.encode()),
                 routing_key=ROUTING_KEY,
             )
-            logger.info(f"AMQP sent: {message}")
+            logger.info("AMQP sent: %s", message)
         except Exception as e:
-            logger.error(f"Failed to send message: {e}")
+            logger.error("Failed to send message: %s", e)
             raise
 
     async def close(self):
@@ -94,10 +94,10 @@ class SerialCommunication:
     def _open_connection(self, port, baudrate, timeout):
         try:
             self.stream = Serial(port, baudrate, timeout=timeout)
-            logger.info(f"Serial port {port} opened successfully.")
+            logger.info("Serial port %s opened successfully.", port)
         except SerialException as e:
-            logger.error(f"Failed to open serial port: {e}")
-            raise ConnectionError(f"Failed to open serial port: {e}")
+            logger.error("Failed to open serial port: %s", e)
+            raise ConnectionError(f"Failed to open serial port: {e}") from e
 
     async def read_and_send_data(self, amqp_client):
         while True:
@@ -106,12 +106,12 @@ class SerialCommunication:
                     ubx_reader = UBXReader(self.stream, protfilter=NMEA_PROTOCOL)
                     _, parsed_data = ubx_reader.read()
                     if parsed_data and parsed_data.identity in GNSS_MESSAGES:
-                        logger.info(f"Received GNSS message: {parsed_data}")
+                        logger.info("Received GNSS message: %s", parsed_data)
                         asyncio.create_task(
                             self.process_and_send(parsed_data, amqp_client)
                         )
                 except SerialException as e:
-                    logger.error(f"Error reading data from serial port: {e}")
+                    logger.error("Error reading data from serial port: %s", e)
                     break
             else:
                 await asyncio.sleep(0.01)  # Short sleep to yield control
@@ -156,12 +156,12 @@ class SerialCommunication:
 
         start_time = time.time()
         json_data = json.dumps(data_dict)
-        logger.debug(f"Sending JSON data: {json_data}")
+        logger.debug("Sending JSON data: %s", json_data)
 
         # Correctly await the publish_message coroutine
         await amqp_client.publish_message(json_data)
         send_time = time.time() - start_time
-        logger.debug(f"Time taken to send message: {send_time} seconds")
+        logger.debug("Time taken to send message: %s seconds", send_time)
 
     def enqueue_message(self, message):
         self.message_queue.put(message)
@@ -172,9 +172,9 @@ class SerialCommunication:
                 message = self.message_queue.get()
                 try:
                     self.stream.write(message)
-                    logger.info(f"Serial Message Sent: {message}")
+                    logger.info("Serial Message Sent: %s", message)
                 except SerialException as e:
-                    logger.error(f"Error sending message: {e}")
+                    logger.error("Error sending message: %s", e)
 
             await asyncio.sleep(0.01)
 
@@ -234,7 +234,7 @@ class PointPerfectClient:
             self.subscribe("/pp/Lb/us", qos=0)
             self.subscribe("/pp/ubx/mga", qos=1)
         else:
-            logger.error(f"Failed to connect to MQTT server, return code {rc}")
+            logger.error("Failed to connect to MQTT server, return code %s", rc)
 
     def _on_mqtt_disconnect(self, client, userdata, rc):
         logger.info(
@@ -244,37 +244,37 @@ class PointPerfectClient:
 
     def _handle_message(self, client, userdata, msg):
         try:
-            logger.debug(f"Received message on topic {msg.topic}")
+            logger.debug("Received message on topic %s", msg.topic)
             # Handle different message types here
             self.serial_communication.enqueue_message(msg.payload)
-        except Exception as e:
-            logger.exception(f"Error handling message on {msg.topic}", exc_info=True)
+        except Exception:
+            logger.exception("Error handling message on %s", msg.topic)
 
     def connect(self):
         try:
             self.mqtt_client.connect(self.mqtt_server, self.mqtt_port)
             self.mqtt_client.loop_start()
-        except Exception as e:
+        except Exception:
             logger.exception("Error connecting to MQTT server", exc_info=True)
 
     def disconnect(self):
         try:
             self.mqtt_client.disconnect()
             self.mqtt_client.loop_stop()
-        except Exception as e:
+        except Exception:
             logger.exception("Error disconnecting MQTT client", exc_info=True)
 
     def subscribe(self, topic, qos=0):
         if topic not in self.current_topics:
             self.mqtt_client.subscribe(topic, qos)
             self.current_topics[topic] = qos
-            logger.info(f"Subscribed to {topic} with QoS {qos}")
+            logger.info("Subscribed to %s with QoS %s", topic, qos)
 
     def unsubscribe(self, topic):
         if topic in self.current_topics:
             self.mqtt_client.unsubscribe(topic)
             del self.current_topics[topic]
-            logger.info(f"Unsubscribed from {topic}")
+            logger.info("Unsubscribed from %s", topic)
 
 
 async def main():
@@ -285,9 +285,9 @@ async def main():
     # Load configuration from the YAML file
     config = load_config(config_filepath)
     config.create_temp_files()
-    logger.debug(f"Cert file path: {config.mqtt_cert_file}")
-    logger.debug(f"Key file path: {config.mqtt_key_file}")
-    logger.debug(f"CA file path: {config.mqtt_root_ca_file}")
+    logger.debug("Cert file path: %s", config.mqtt_cert_file)
+    logger.debug("Key file path: %s", config.mqtt_key_file)
+    logger.debug("CA file path: %s", config.mqtt_root_ca_file)
 
     # Initialize RabbitMQ client and connect
     rabbitmq_client = AsyncRabbitMQClient()

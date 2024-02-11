@@ -36,11 +36,11 @@ class AppConfig(BaseModel):
 
     @classmethod
     def load_from_yaml(cls, yaml_file_path: str) -> "AppConfig":
-        with open(yaml_file_path, "r") as file:
+        with open(yaml_file_path, "r", encoding="utf-8") as file:
             config_data = yaml.safe_load(file)
 
         if json_file_path := config_data.get("UCENTER_JSON_FILE", ""):
-            with open(json_file_path, "r") as file:
+            with open(json_file_path, "r", encoding="utf-8") as file:
                 mqtt_data = json.load(file)
                 # Extract and rename MQTT settings to match AppConfig fields
                 mqtt_config = mqtt_data["MQTT"]["Connectivity"]
@@ -74,8 +74,8 @@ class AppConfig(BaseModel):
                 ssl_config = mqtt_data["MQTT"]["Connectivity"].get("SSL", {})
                 config_data["tls_version"] = ssl_config.get("Protocol", "TLSv1.2")
 
-        logger.info(f"Loaded configuration: {config_data}")
-        return cls.parse_obj(config_data)
+        logger.info("Loaded configuration: %s", config_data)
+        return cls.__config__.model_validate(config_data)
 
     def create_temp_files(self):
         # Create temporary files for certs and keys, if necessary
@@ -112,5 +112,5 @@ def load_config(yaml_file_path: str) -> AppConfig:
     try:
         return AppConfig.load_from_yaml(yaml_file_path)
     except Exception as e:
-        logger.error(f"Failed to load configuration: {e}")
+        logger.error("Failed to load configuration: %s", e)
         raise
