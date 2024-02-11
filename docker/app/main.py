@@ -129,7 +129,11 @@ class SerialCommunication:
         utc_date = utc_datetime.date()
 
         # Combine UTC date with parsed_data.time
-        full_datetime = datetime.combine(utc_date, parsed_data.time)
+        try:
+            full_datetime = datetime.combine(utc_date, parsed_data.time)
+        except Exception as e:
+            logger.info("Currently no time value from receiver: %s", e)
+            full_datetime = datetime.now()
 
         # No need to set timezone as it's already in UTC
         full_datetime_str = full_datetime.isoformat()

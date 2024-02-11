@@ -7,10 +7,10 @@ services:
       - ./config/config.yaml:/usr/src/app/config.yaml
     environment:
       - CONFIG_FILE=/usr/src/app/config.yaml
-      - RABBITMQ_HOST=192.168.1.153
+      - RABBITMQ_HOST=192.168.1.100
       - RABBITMQ_PORT=5672
-      - RABBITMQ_USERNAME=guest
-      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_USERNAME=user
+      - RABBITMQ_PASSWORD=password
       - EXCHANGE_NAME=gnss_data_exchange
       - ROUTING_KEY=gnss_routing_key
       - DEVICE_ID=blake_home_server

@@ -75,7 +75,7 @@ class AppConfig(BaseModel):
                 config_data["tls_version"] = ssl_config.get("Protocol", "TLSv1.2")
 
         logger.info("Loaded configuration: %s", config_data)
-        return cls.__config__.model_validate(config_data)
+        return cls(**config_data)
 
     def create_temp_files(self):
         # Create temporary files for certs and keys, if necessary
