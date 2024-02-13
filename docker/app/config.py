@@ -62,6 +62,7 @@ class EnvironmentConfigLoader:
             "EXCHANGE_NAME": os.getenv("EXCHANGE_NAME", "gnss_exchange"),
             "ROUTING_KEY": os.getenv("ROUTING_KEY", "gnss_data"),
             "UCENTER_JSON_FILE": os.getenv("UCENTER_JSON_FILE"),
+            "GNSS_MESSAGES": os.getenv("GNSS_MESSAGES", "")
         }
 
 class AppConfig(BaseModel):
@@ -90,11 +91,14 @@ class AppConfig(BaseModel):
     exchange_name: str = Field("gnss_exchange", alias="EXCHANGE_NAME")
     routing_key: str = Field("gnss_data", alias="ROUTING_KEY")
     device_id: str = Field("blake_test_rpi", alias="DEVICE_ID")
-    gnss_messages: Set[str] = Field({"GNGGA"}, alias="GNSS_MESSAGES")
+    gnss_messages: Set[str] = Field(set(), alias="GNSS_MESSAGES")
+    logging_level: str = Field("INFO", alias="LOGGING_LEVEL")
 
     @classmethod
     def from_env_and_json(cls, env_loader: EnvironmentConfigLoader, json_loader: UcenterJsonConfigLoader) -> "AppConfig":
         env_variables = env_loader.load_env_variables()
+        if env_variables.get("GNSS_MESSAGES"):
+            env_variables["GNSS_MESSAGES"] = set(env_variables["GNSS_MESSAGES"].split(","))
         json_file_path = env_variables.get("UCENTER_JSON_FILE")
         if not json_file_path:
             raise ValueError("UCENTER_JSON_FILE environment variable is not set or does not point to a valid file.")

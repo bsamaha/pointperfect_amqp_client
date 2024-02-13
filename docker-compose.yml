@@ -19,5 +19,7 @@ services:
       - TIMEOUT=1.0
       - UCENTER_JSON_FILE=/usr/src/app/ucenter_config.json
       - UBX_FILENAME=None
+      - GNSS_MESSAGES=GNGGA
+      - LOGGING_LEVEL=INFO
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
