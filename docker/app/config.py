@@ -1,23 +1,73 @@
 from pydantic import BaseModel, Field
-import yaml
 import json
 import tempfile
-from typing import Any, List, Optional, Dict
+from typing import Any, List, Optional, Dict, Set
 import logging
+import os
 
-# Logger setup
 logger = logging.getLogger(__name__)
 
+class UcenterJsonConfigLoader:
+    def load_config(self, path: str) -> dict:
+        with open(path, "r", encoding="utf-8") as file:
+            config_data = json.load(file)["MQTT"]
+        # Process MQTT configuration
+        mqtt_config = config_data["Connectivity"]
+        mqtt_subscriptions = config_data.get("Subscriptions", {})
+        config = {
+            "mqtt_client_id": mqtt_config["ClientID"],
+            "mqtt_server_uri": mqtt_config["ServerURI"],
+            "mqtt_key": mqtt_config["ClientCredentials"]["Key"],
+            "mqtt_cert": mqtt_config["ClientCredentials"]["Cert"],
+            "mqtt_root_ca": mqtt_config["ClientCredentials"].get("RootCA"),
+            "mqtt_subscription_topics": mqtt_subscriptions.get("Key", {}).get("KeyTopics", []),
+            "mqtt_assistnow_topics": mqtt_subscriptions.get("AssistNow", {}).get("AssistNowTopics", []),
+            "mqtt_data_topics": self._flatten_data_topics(mqtt_subscriptions.get("Data", {}).get("DataTopics", [])),
+            "mqtt_dynamic_keys": config_data.get("dynamickeys", {}),
+            "tls_version": mqtt_config["SSL"].get("Protocol", "TLSv1.2"),
+        }
+        return config
+
+    @staticmethod
+    def _flatten_data_topics(data_topics):
+        flattened_topics = []
+        for topic_group in data_topics:
+            flattened_topics.extend(topic_group.split(";"))
+        return flattened_topics
+
+    @staticmethod
+    def _create_temp_file(content: str, file_type: str) -> str:
+        content_formatted = (
+            f"-----BEGIN {file_type}-----\n{content}\n-----END {file_type}-----"
+        )
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False, mode="w", prefix=f"{file_type.lower()}_", suffix=".pem"
+        )
+        temp_file.write(content_formatted)
+        temp_file.flush()
+        temp_file.close()
+        return temp_file.name
+
+class EnvironmentConfigLoader:
+    @staticmethod
+    def load_env_variables() -> dict:
+        return {
+            "PORT": os.getenv("PORT", "/dev/ttyUSB0"),
+            "BAUDRATE": int(os.getenv("BAUDRATE", "9600")),
+            "TIMEOUT": float(os.getenv("TIMEOUT", "1.0")),
+            "RABBITMQ_HOST": os.getenv("RABBITMQ_HOST", "localhost"),
+            "RABBITMQ_PORT": os.getenv("RABBITMQ_PORT", "5672"),
+            "RABBITMQ_USERNAME": os.getenv("RABBITMQ_USERNAME", "guest"),
+            "RABBITMQ_PASSWORD": os.getenv("RABBITMQ_PASSWORD", "guest"),
+            "EXCHANGE_NAME": os.getenv("EXCHANGE_NAME", "gnss_exchange"),
+            "ROUTING_KEY": os.getenv("ROUTING_KEY", "gnss_data"),
+            "UCENTER_JSON_FILE": os.getenv("UCENTER_JSON_FILE"),
+        }
 
 class AppConfig(BaseModel):
     port: str = Field(..., alias="PORT")
     baudrate: int = Field(..., alias="BAUDRATE")
     timeout: float = Field(..., alias="TIMEOUT")
-    ucenter_json_file: str = Field(..., alias="UCENTER_JSON_FILE")
-    localized: bool = Field(False, alias="LOCALIZED")
-    region: str = Field(..., alias="REGION")
-    lband: bool = Field(False, alias="LBAND")
-    ubx_filename: Optional[str] = Field(None, alias="UBX_FILENAME")
     # Flatten MQTT Config
     mqtt_client_id: str
     mqtt_server_uri: str
@@ -33,84 +83,40 @@ class AppConfig(BaseModel):
     mqtt_key_file: Optional[str] = None
     mqtt_root_ca_file: Optional[str] = None
     tls_version: Optional[str] = None
+    rabbitmq_host: str = Field("localhost", alias="RABBITMQ_HOST")
+    rabbitmq_port: str = Field("5672", alias="RABBITMQ_PORT")
+    rabbitmq_username: str = Field("guest", alias="RABBITMQ_USERNAME")
+    rabbitmq_password: str = Field("guest", alias="RABBITMQ_PASSWORD")
+    exchange_name: str = Field("gnss_exchange", alias="EXCHANGE_NAME")
+    routing_key: str = Field("gnss_data", alias="ROUTING_KEY")
+    device_id: str = Field("blake_test_rpi", alias="DEVICE_ID")
+    gnss_messages: Set[str] = Field({"GNGGA"}, alias="GNSS_MESSAGES")
 
     @classmethod
-    def load_from_yaml(cls, yaml_file_path: str) -> "AppConfig":
-        with open(yaml_file_path, "r", encoding="utf-8") as file:
-            config_data = yaml.safe_load(file)
-
-        if json_file_path := config_data.get("UCENTER_JSON_FILE", ""):
-            with open(json_file_path, "r", encoding="utf-8") as file:
-                mqtt_data = json.load(file)
-                # Extract and rename MQTT settings to match AppConfig fields
-                mqtt_config = mqtt_data["MQTT"]["Connectivity"]
-                mqtt_subscriptions = mqtt_data["MQTT"].get("Subscriptions", {})
-                config_data["mqtt_client_id"] = mqtt_config["ClientID"]
-                config_data["mqtt_server_uri"] = mqtt_config["ServerURI"]
-                # Renaming 'Key' to 'mqtt_key' and 'Cert' to 'mqtt_cert' based on JSON structure
-                config_data["mqtt_key"] = mqtt_config["ClientCredentials"]["Key"]
-                config_data["mqtt_cert"] = mqtt_config["ClientCredentials"]["Cert"]
-                config_data["mqtt_root_ca"] = mqtt_config["ClientCredentials"].get(
-                    "RootCA"
-                )
-                # Handle subscriptions
-                config_data["mqtt_subscription_topics"] = mqtt_subscriptions.get(
-                    "Key", {}
-                ).get("KeyTopics", [])
-                config_data["mqtt_assistnow_topics"] = mqtt_subscriptions.get(
-                    "AssistNow", {}
-                ).get("AssistNowTopics", [])
-                # Flatten data topics
-                data_topics = []
-                for topic_group in mqtt_subscriptions.get("Data", {}).get(
-                    "DataTopics", []
-                ):
-                    data_topics.extend(topic_group.split(";"))
-                config_data["mqtt_data_topics"] = data_topics
-                # Dynamic keys
-                config_data["mqtt_dynamic_keys"] = mqtt_data["MQTT"].get(
-                    "dynamickeys", {}
-                )
-                ssl_config = mqtt_data["MQTT"]["Connectivity"].get("SSL", {})
-                config_data["tls_version"] = ssl_config.get("Protocol", "TLSv1.2")
-
-        logger.info("Loaded configuration: %s", config_data)
+    def from_env_and_json(cls, env_loader: EnvironmentConfigLoader, json_loader: UcenterJsonConfigLoader) -> "AppConfig":
+        env_variables = env_loader.load_env_variables()
+        json_file_path = env_variables.get("UCENTER_JSON_FILE")
+        if not json_file_path:
+            raise ValueError("UCENTER_JSON_FILE environment variable is not set or does not point to a valid file.")
+        json_config = json_loader.load_config(json_file_path)
+        
+        # Create temporary files for MQTT credentials
+        if "mqtt_cert" in json_config and json_config["mqtt_cert"]:
+            json_config["mqtt_cert_file"] = json_loader._create_temp_file(json_config["mqtt_cert"], "CERTIFICATE")
+        if "mqtt_key" in json_config and json_config["mqtt_key"]:
+            json_config["mqtt_key_file"] = json_loader._create_temp_file(json_config["mqtt_key"], "RSA PRIVATE KEY")  # Updated to match old code
+        if "mqtt_root_ca" in json_config and json_config["mqtt_root_ca"]:
+            json_config["mqtt_root_ca_file"] = json_loader._create_temp_file(json_config["mqtt_root_ca"], "CERTIFICATE")
+        
+        config_data = {**env_variables, **json_config}
         return cls(**config_data)
 
-    def create_temp_files(self):
-        # Create temporary files for certs and keys, if necessary
-        self.mqtt_cert_file = (
-            self._create_temp_file(self.mqtt_cert, "CERTIFICATE")
-            if self.mqtt_cert
-            else None
-        )
-        self.mqtt_key_file = (
-            self._create_temp_file(self.mqtt_key, "RSA PRIVATE KEY")
-            if self.mqtt_key
-            else None
-        )
-        self.mqtt_root_ca_file = (
-            self._create_temp_file(content=self.mqtt_root_ca, file_type="CERTIFICATE")
-            if self.mqtt_root_ca
-            else None
-        )
-
-    @staticmethod
-    def _create_temp_file(content: str, file_type: str) -> str:
-        content_formatted = (
-            f"-----BEGIN {file_type}-----\n{content}\n-----END {file_type}-----"
-        )
-        temp_file = tempfile.NamedTemporaryFile(
-            delete=False, mode="w", prefix=f"{file_type.lower()}_", suffix=".pem"
-        )
-        temp_file.write(content_formatted)
-        temp_file.flush()
-        return temp_file.name
-
-
-def load_config(yaml_file_path: str) -> AppConfig:
+def load_config() -> AppConfig:
     try:
-        return AppConfig.load_from_yaml(yaml_file_path)
+        env_loader = EnvironmentConfigLoader()
+        json_loader = UcenterJsonConfigLoader()
+        config = AppConfig.from_env_and_json(env_loader, json_loader)
+        return config
     except Exception as e:
-        logger.error("Failed to load configuration: %s", e)
+        logger.error(f"Failed to load configuration: {e}")
         raise

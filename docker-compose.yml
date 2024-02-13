@@ -14,5 +14,10 @@ services:
       - EXCHANGE_NAME=gnss_data_exchange
       - ROUTING_KEY=gnss_routing_key
       - DEVICE_ID=blake_home_server
+      - PORT=/dev/ttyUSB0
+      - BAUDRATE=38400
+      - TIMEOUT=1.0
+      - UCENTER_JSON_FILE=/usr/src/app/ucenter_config.json
+      - UBX_FILENAME=None
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0

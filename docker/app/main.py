@@ -12,79 +12,39 @@ from serial import Serial, SerialException
 from pyubx2 import UBXReader, UBX_PROTOCOL, NMEA_PROTOCOL, RTCM3_PROTOCOL
 from config import load_config
 from pointperfect_client import PointPerfectClient
+from rabbit import AsyncRabbitMQClient
 
 # Configure logging to write to stdout
 logger = logging.getLogger(__name__)
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s %(levelname)s %(message)s",
     datefmt="%H:%M:%S",
     handlers=[logging.StreamHandler(sys.stdout)],  # Log to stdout
 )
 
 # Use environment variables with defaults
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
-PORT = os.getenv("PORT", "/dev/ttyACM0")
-DEVICE_ID = os.getenv("DEVICE_ID", "blake_test_rpi")
+# RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+# PORT = os.getenv("PORT", "/dev/ttyACM0")
+# DEVICE_ID = os.getenv("DEVICE_ID", "blake_test_rpi")
 
 GNSS_MESSAGES = {"GNGGA"}
-RABBITMQ_PORT = os.getenv("RABBITMQ_PORT", "5672")
-RABBITMQ_USERNAME = os.getenv("RABBITMQ_USERNAME", "guest")
-RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "guest")
-EXCHANGE_NAME = os.getenv("EXCHANGE_NAME", "gnss_exchange")
-ROUTING_KEY = os.getenv("ROUTING_KEY", "gnss_data")
+# RABBITMQ_PORT = os.getenv("RABBITMQ_PORT", "5672")
+# RABBITMQ_USERNAME = os.getenv("RABBITMQ_USERNAME", "guest")
+# RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "guest")
+# EXCHANGE_NAME = os.getenv("EXCHANGE_NAME", "gnss_exchange")
+# ROUTING_KEY = os.getenv("ROUTING_KEY", "gnss_data")
 MAX_RECONNECT_ATTEMPTS = 5
 RECONNECT_DELAY = 1  # in seconds, will be doubled with each attempt
 
-
-class AsyncRabbitMQClient:
-    def __init__(self):
-        self.connection = None
-        self.channel = None
-
-    async def connect(self):
-        try:
-            # Using aio_pika for async connection
-            self.connection = await aio_pika.connect_robust(
-                f"amqp://{RABBITMQ_USERNAME}:{RABBITMQ_PASSWORD}@{RABBITMQ_HOST}:{RABBITMQ_PORT}/"
-            )
-            self.channel = await self.connection.channel()
-            await self.channel.declare_exchange(
-                EXCHANGE_NAME, aio_pika.ExchangeType.DIRECT, durable=True
-            )
-        except Exception as e:
-            logger.error("Failed to connect to RabbitMQ: %s", e)
-            raise
-
-    async def publish_message(self, message):
-        try:
-            # Obtain a reference to the custom exchange object
-            exchange = await self.channel.get_exchange(EXCHANGE_NAME)
-            # Publish message to the specific exchange with the correct routing key
-            await exchange.publish(
-                aio_pika.Message(body=message.encode()),
-                routing_key=ROUTING_KEY,
-            )
-            logger.info("AMQP sent: %s", message)
-        except Exception as e:
-            logger.error("Failed to send message: %s", e)
-            raise
-
-    async def close(self):
-        if self.channel:
-            await self.channel.close()
-        if self.connection:
-            await self.connection.close()
-            logger.info("RabbitMQ connection closed.")
-
-
 class SerialCommunication:
-    def __init__(self, port, baudrate, timeout):
+    def __init__(self, port, baudrate, timeout, device_id):
         self.stream = None
         self.message_queue = queue.Queue()
         self.running = True
         self._open_connection(port, baudrate, timeout)
         self.thread = asyncio.create_task(self.send_messages())
+        self.device_id = device_id
 
     def _open_connection(self, port, baudrate, timeout):
         try:
@@ -150,7 +110,7 @@ class SerialCommunication:
             "diff_age": diff_age,
             "diff_station": parsed_data.diffStation,
             "processed_time": f"{int(time.time()*1000)}",
-            "device_id": DEVICE_ID,
+            "device_id": self.device_id,
         }
 
         start_time = time.time()
@@ -185,24 +145,30 @@ class SerialCommunication:
             logger.info("Serial port closed.")
 
 
-async def main():
-    # get environment variables for the config.yaml
-    config_filepath = os.getenv(
-        "CONFIG_FILE",
-    )
-    # Load configuration from the YAML file
-    config = load_config(config_filepath)
-    config.create_temp_files()
-    logger.debug("Cert file path: %s", config.mqtt_cert_file)
-    logger.debug("Key file path: %s", config.mqtt_key_file)
-    logger.debug("CA file path: %s", config.mqtt_root_ca_file)
 
-    # Initialize RabbitMQ client and connect
-    rabbitmq_client = AsyncRabbitMQClient()
+async def main():
+    # Load configuration directly using the load_config function
+    config = load_config()
+    logger.info(f"Config: {config}")
+    # Initialize RabbitMQ client and connect, now passing the config object
+    rabbitmq_client = AsyncRabbitMQClient(config)
     await rabbitmq_client.connect()
 
     # Initialize SerialCommunication with the config
-    serial_comm = SerialCommunication(config.port, config.baudrate, config.timeout)
+    serial_comm = SerialCommunication(config.port, config.baudrate, config.timeout, config.device_id)
+
+    # read the file at config.mqtt_cert_file
+    with open(config.mqtt_cert_file, "r") as f:
+        cert = f.read()
+        logger.info(f"mqtt_cert_file: {cert}")
+    
+    with open(config.mqtt_key_file, "r") as f:
+        key = f.read()
+        logger.info(f"mqtt_key_file: {key}")
+
+    with open(config.mqtt_root_ca_file, "r") as f:
+        root_ca = f.read()
+        logger.info(f"mqtt_root_ca_file: {root_ca}")
 
     # Initialize PointPerfectClient with the config and serial communication
     point_perfect_client = PointPerfectClient(config, serial_comm)
@@ -220,7 +186,6 @@ async def main():
         # Clean up
         serial_comm.close()
         point_perfect_client.disconnect()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
