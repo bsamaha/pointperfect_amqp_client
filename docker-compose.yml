@@ -13,13 +13,15 @@ services:
       - RABBITMQ_PASSWORD=password
       - EXCHANGE_NAME=gnss_data_exchange
       - ROUTING_KEY=gnss_routing_key
-      - DEVICE_ID=blake_home_server
+      # - DEVICE_ID=3
       - PORT=/dev/ttyUSB0
       - BAUDRATE=38400
       - TIMEOUT=1.0
       - UCENTER_JSON_FILE=/usr/src/app/ucenter_config.json
       - UBX_FILENAME=None
-      - GNSS_MESSAGES=GNGGA
-      - LOGGING_LEVEL=INFO
+      - GNSS_MESSAGES=GNGGA,NAV-PVT
+      - LOGGING_LEVEL=DEBUG
+      - EXPERIMENT_ID=1
+      - ALIAS=blake_test_homeserver1
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
