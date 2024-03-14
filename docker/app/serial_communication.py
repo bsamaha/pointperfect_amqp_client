@@ -24,7 +24,7 @@ class MessageHandler(ABC):
 class GNGGAHandler(MessageHandler):
     def process(self, parsed_data, device_id, experiment_id):
         # Assuming 'diff_age' needs to be handled or set to a default value
-        diff_age = getattr(parsed_data, 'diff_age', None)
+        # diff_age = getattr(parsed_data, 'diff_age', None)
         data_dict = {
             "message_type": parsed_data.identity,
             "full_time": datetime.now().isoformat(),  # Simplified for demonstration
@@ -39,7 +39,7 @@ class GNGGAHandler(MessageHandler):
             "alt_unit": parsed_data.altUnit,
             "sep": parsed_data.sep,
             "sep_unit": parsed_data.sepUnit,
-            "diff_age": diff_age,
+            "diff_age": parsed_data.diffAge or None,
             "diff_station": parsed_data.diffStation,
             "processed_time": f"{int(time.time()*1000)}",
             "device_id": device_id,
@@ -54,7 +54,7 @@ class NAVPVTHandler(MessageHandler):
         # Convert iTOW (Time of Week) to a datetime object, assuming iTOW is in seconds
         # This is a placeholder; adjust according to your actual time handling needs
         full_time = datetime.now(tz=timezone.utc).isoformat()  # Simplified for demonstration
-
+        logger.debug(parsed_data)
         data_dict = {
             "message_type": "NAV-PVT",
             "full_time": full_time,
