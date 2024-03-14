@@ -2,8 +2,8 @@ import asyncio
 import logging
 import sys
 import os
-import uuid
 import json
+import uuid
 from config import load_config
 from rabbit import AsyncRabbitMQClient
 from serial_communication import SerialCommunication
@@ -61,17 +61,13 @@ async def register_device(config, rabbitmq_client):
 
     except Exception as e:
         logger.error("Failed to register device: %s", e)
+        raise
         # Handle the error appropriately (e.g., retry, exit, etc.)
 
-async def main():
-    config = load_config()
-    logger.info("GNSS Messages: %s", config.gnss_messages)
+async def main_loop(config):
     rabbitmq_client, serial_comm, point_perfect_client = await setup_clients(config)
-
-    logger.info("Experiment registration complete")
-    await register_device(config, rabbitmq_client)
-    # await register_experiment(config, rabbitmq_client)
     try:
+        await register_device(config, rabbitmq_client)
         logger.info("Starting to read and send data")
         serial_comm = SerialCommunication(
             port=config.port,
@@ -81,20 +77,29 @@ async def main():
             gnss_messages=config.gnss_messages,
             amqp_client=rabbitmq_client,
             experiment_id=config.experiment_id
-        )
+        ) 
         await asyncio.gather(serial_comm.read_and_send_data())
     finally:
         serial_comm.close()
         point_perfect_client.disconnect()
 
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
-    pending = asyncio.all_tasks(loop)
-    for task in pending:
-        task.cancel()
+async def main():
+    config = load_config()
+    retry_delay = 1  # Initial retry delay in seconds
+    max_retry_delay = 32  # Maximum retry delay, to prevent excessive wait times
+
+    while True:
         try:
-            loop.run_until_complete(task)
-        except asyncio.CancelledError:
-            pass
-    loop.close()
+            logger.info("Starting main loop")
+            await main_loop(config)
+            break  # Exit loop if main_loop completes successfully
+        except Exception as e:
+            logger.error("An error occurred: %s. Reconnecting in %s seconds...", e, retry_delay)
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, max_retry_delay)  # Exponential backoff with a cap
+        finally:
+            logger.info("Cleaning up resources before retrying...")
+            # Here, add any necessary cleanup logic
+
+if __name__ == "__main__":
+    asyncio.run(main())

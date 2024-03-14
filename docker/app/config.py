@@ -66,7 +66,13 @@ class EnvironmentConfigLoader:
             "LOGGING_LEVEL": os.getenv("LOGGING_LEVEL", "INFO"),
             "DEVICE_ID": os.getenv("DEVICE_ID", ""),
             "EXPERIMENT_ID": os.getenv("EXPERIMENT_ID", "1"),
-            "ALIAS": os.getenv("ALIAS", "blake_test_homeserver")
+            "ALIAS": os.getenv("ALIAS", "blake_test_homeserver"),
+            "RABBITMQ_HEARTBEAT": int(os.getenv("RABBITMQ_HEARTBEAT", "15")),
+            "RABBITMQ_CONNECTION_TIMEOUT": int(os.getenv("RABBITMQ_CONNECTION_TIMEOUT", "45")),
+            "RABBITMQ_RETRY_ATTEMPTS": int(os.getenv("RABBITMQ_RETRY_ATTEMPTS", "5")),
+            "RABBITMQ_INITIAL_RETRY_DELAY": int(os.getenv("RABBITMQ_INITIAL_RETRY_DELAY", "1")),
+            "PP_REGION": os.getenv("PP_REGION", "US"),
+            "PP_PLAN": os.getenv("PP_PLAN", "ip")
         }
 
 class AppConfig(BaseModel):
@@ -99,6 +105,8 @@ class AppConfig(BaseModel):
     logging_level: str = Field("INFO", alias="LOGGING_LEVEL")
     experiment_id: str = Field("1", alias="EXPERIMENT_ID")
     alias: str = Field("blake_test_homeserver", alias="ALIAS")
+    pp_region: str = Field("US", alias="PP_REGION")
+    pp_plan: str = Field("ip", alias="PP_PLAN")
 
     @classmethod
     def from_env_and_json(cls, env_loader: EnvironmentConfigLoader, json_loader: UcenterJsonConfigLoader) -> "AppConfig":

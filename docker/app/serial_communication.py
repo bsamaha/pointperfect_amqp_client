@@ -89,30 +89,57 @@ class NAVPVTHandler(MessageHandler):
         }
         return data_dict
 
-# Modify the MessageProcessor to use handlers
+class MessageReader:
+    """
+    Responsible for reading messages from a stream.
+    """
+    @staticmethod
+    def read_messages(stream, protfilter):
+        ubx_reader = UBXReader(stream, protfilter=protfilter)
+        while stream.in_waiting:
+            try:
+                _, parsed_data = ubx_reader.read()
+                if parsed_data is None:
+                    break  # No more data available
+                yield parsed_data
+            except Exception as e:
+                logger.error("Error reading GNSS message: %s", e)
+                continue  # Proceed with the next iteration even if the current one fails
+
 class MessageProcessor:
+    """
+    Processes GNSS messages using registered handlers.
+    """
     handlers = {
         'GNGGA': GNGGAHandler(),
         'NAV-PVT': NAVPVTHandler(),
     }
 
-    @staticmethod
-    def process_data(stream, device_id, gnss_messages, experiment_id):
+    @classmethod
+    def process_data(cls, stream, device_id, gnss_messages, experiment_id):
+        message_reader = MessageReader()
         try:
-            ubx_reader = UBXReader(stream, protfilter=UBX_PROTOCOL | NMEA_PROTOCOL | RTCM3_PROTOCOL)
-            while stream.in_waiting:  # Check if data is available
-                _, parsed_data = ubx_reader.read()
-                if parsed_data is None:
-                    break  # No more data available
-                if parsed_data.identity in gnss_messages:
-                    handler = MessageProcessor.handlers.get(parsed_data.identity)
-                    if handler:
-                        return handler.process(parsed_data, device_id, experiment_id)
-                    else:
-                        logger.warning("No handler for message type: %s", parsed_data.identity)
+            for parsed_data in message_reader.read_messages(stream, UBX_PROTOCOL | NMEA_PROTOCOL | RTCM3_PROTOCOL):
+                if parsed_data.identity not in gnss_messages:
+                    logger.debug("Message type not in GNSS messages: %s", parsed_data.identity)
+                    continue
+
+                handler = cls.handlers.get(parsed_data.identity)
+                if not handler:
+                    logger.warning("No handler for message type: %s", parsed_data.identity)
+                    continue
+
+                return handler.process(parsed_data, device_id, experiment_id)
         except SerialException as e:
             logger.error("Error reading data from serial port: %s", e)
-            return None
+        except Exception as e:
+            logger.error("Unexpected error in MessageProcessor: %s", e)
+        finally:
+            if stream.in_waiting:
+                logger.debug("Data still available in stream after processing.")
+            else:
+                logger.debug("No more data available in stream.")
+        return None
 
 class SerialCommunication:
     def __init__(self, port, baudrate, timeout, device_id, experiment_id, amqp_client, gnss_messages):
@@ -140,13 +167,15 @@ class SerialCommunication:
 
     async def read_and_send_data(self):
         while True:
-            if self.stream and self.stream.in_waiting:
-                data_dict = MessageProcessor.process_data(stream=self.stream, device_id=self.device_id, gnss_messages=self.gnss_messages, experiment_id=self.experiment_id)
-                if data_dict:
-                    logger.info("Received GNSS message: %s", data_dict)
-                    await self.amqp_client.publish_message(json.dumps(data_dict))
-            else:
+            if not (self.stream and self.stream.in_waiting):
                 await asyncio.sleep(0.01)  # Short sleep to yield control
+                continue
+
+            data_dict = MessageProcessor.process_data(self.stream, self.device_id, self.gnss_messages, self.experiment_id)
+            if data_dict:
+                logger.info("Received GNSS message: %s", data_dict)
+                await self.amqp_client.publish_message(json.dumps(data_dict))
+
 
     async def send_messages(self):
         while self.running:
@@ -154,7 +183,7 @@ class SerialCommunication:
                 message = self.message_queue.get()
                 try:
                     self.stream.write(message)
-                    logger.info("Serial Message Sent: %s", message)
+                    logger.debug("Serial Message Sent: %s", message)
                 except SerialException as e:
                     logger.error("Error sending message: %s", e)
             await asyncio.sleep(0.01)

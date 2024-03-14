@@ -50,8 +50,8 @@ class PointPerfectClient:
     def _on_mqtt_connect(self, client, userdata, flags, rc):
         if rc == 0:
             logger.info("Connected to MQTT server")
-            self.subscribe("/pp/ubx/0236/Lb", qos=1)
-            self.subscribe("/pp/Lb/us", qos=0)
+            self.subscribe(f"/pp/ubx/0236/{self.config.pp_plan}", qos=1)
+            self.subscribe(f"/pp/{self.config.pp_plan}/{self.config.pp_region}", qos=0)
             self.subscribe("/pp/ubx/mga", qos=1)
         else:
             logger.error("Failed to connect to MQTT server, return code %s", rc)
@@ -64,7 +64,7 @@ class PointPerfectClient:
 
     def _handle_message(self, client, userdata, msg):
         try:
-            logger.debug("Received message on topic %s", msg.topic)
+            logger.info("Received MQTT message on topic %s", msg.topic)
             # Handle different message types here
             self.serial_communication.enqueue_message(msg.payload)
         except Exception:

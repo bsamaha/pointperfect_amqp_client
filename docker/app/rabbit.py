@@ -24,9 +24,35 @@ class AsyncRabbitMQClient:
             raise
 
     async def _setup_connection(self):
-        self.connection = await aio_pika.connect_robust(
-            f"amqp://{self.config.rabbitmq_username}:{self.config.rabbitmq_password}@{self.config.rabbitmq_host}:{self.config.rabbitmq_port}/"
-        )
+        # Using getattr to provide default values if the attributes are not set
+        retry_attempts = getattr(self.config, 'RABBITMQ_RETRY_ATTEMPTS', 5)
+        retry_delay = getattr(self.config, 'RABBITMQ_INITIAL_RETRY_DELAY', 1)  # Default to 1 second
+        heartbeat = getattr(self.config, 'RABBITMQ_HEARTBEAT', 60)  # Default to 60 seconds
+        connection_timeout = getattr(self.config, 'RABBITMQ_CONNECTION_TIMEOUT', 30)  # Default to 30 seconds
+
+        # Construct the connection string
+        connection_string = f"amqp://{self.config.rabbitmq_username}:{self.config.rabbitmq_password}@{self.config.rabbitmq_host}:{self.config.rabbitmq_port}/"
+        
+        for attempt in range(retry_attempts):
+            try:
+                self.connection = await aio_pika.connect_robust(
+                    connection_string,
+                    heartbeat=heartbeat,
+                    timeout=connection_timeout,
+                    # If using SSL/TLS, configure the ssl_options here
+                    # ssl_options=ssl.create_default_context(ssl.Purpose.CLIENT_AUTH),
+                )
+                logger.info("Successfully connected to RabbitMQ.")
+                return  # Successful connection, exit the method
+            except aio_pika.exceptions.AMQPConnectionError as e:
+                logger.warning("Connection attempt %d failed: %s", attempt + 1, e)
+                if attempt < retry_attempts - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error("All connection attempts failed")
+                    raise
+
 
     async def _setup_channel(self):
         self.channel = await self.connection.channel()

@@ -4,24 +4,23 @@ services:
     build: ./docker
     volumes:
       - ./config/ucenter_config.json:/usr/src/app/ucenter_config.json
-      - ./config/config.yaml:/usr/src/app/config.yaml
     environment:
-      - CONFIG_FILE=/usr/src/app/config.yaml
-      - RABBITMQ_HOST=192.168.1.100
+      - RABBITMQ_HOST=localhost
       - RABBITMQ_PORT=5672
       - RABBITMQ_USERNAME=user
       - RABBITMQ_PASSWORD=password
       - EXCHANGE_NAME=gnss_data_exchange
       - ROUTING_KEY=gnss_routing_key
-      # - DEVICE_ID=3
-      - PORT=/dev/ttyUSB0
+      - PORT=/dev/ttyACM0
       - BAUDRATE=38400
       - TIMEOUT=1.0
       - UCENTER_JSON_FILE=/usr/src/app/ucenter_config.json
       - UBX_FILENAME=None
       - GNSS_MESSAGES=GNGGA,NAV-PVT
-      - LOGGING_LEVEL=DEBUG
+      - LOGGING_LEVEL=INFO
       - EXPERIMENT_ID=1
-      - ALIAS=blake_test_homeserver1
+      - ALIAS=blake_test_rpi
+      - PP_REGION=us
+      - PP_PLAN=Lb
     devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0
+      - /dev/ttyACM0:/dev/ttyACM0
